@@ -1,0 +1,540 @@
+// Fakey.Crimey Prisma Schema
+// Production-ready schema with all core features
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// AUTHENTICATION & USERS
+// ============================================================================
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  emailVerified DateTime?
+  password      String?   // For email/password auth (hashed with bcrypt)
+  username      String    @unique
+  
+  // OAuth accounts
+  accounts      Account[]
+  sessions      Session[]
+  
+  // User profile
+  profile       Profile?
+  
+  // Social interactions
+  following     Follow[]  @relation("following")
+  followers     Follow[]  @relation("followers")
+  likes         Like[]
+  favorites     Favorite[]
+  comments      Comment[]
+  reactions     Reaction[]
+  
+  // Collections & lists
+  collections   Collection[]
+  
+  // Guestbook entries from others
+  guestbookEntries GuestbookEntry[]
+  
+  // Premium subscription
+  subscription  Subscription?
+  
+  // Admin
+  isAdmin       Boolean   @default(false)
+  isModerator   Boolean   @default(false)
+  
+  // Security
+  twoFactorEnabled Boolean @default(false)
+  twoFactorSecret  String?
+  
+  // Status & visibility
+  isActive      Boolean   @default(true)
+  isBanned      Boolean   @default(false)
+  bannedReason  String?
+  bannedAt      DateTime?
+  
+  // Timestamps
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  lastLoginAt   DateTime?
+  
+  // Relations
+  reports       Report[]  @relation("reportedBy")
+  reportedProfiles Report[] @relation("reportedProfile")
+  
+  @@index([username])
+  @@index([email])
+}
+
+model Account {
+  id                 String  @id @default(cuid())
+  userId             String
+  user               User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type               String  // 'oauth', 'oidc', 'credentials'
+  provider           String  // 'github', 'discord', 'google', etc.
+  providerAccountId  String
+  scope              String?
+  access_token       String? @db.Text
+  refresh_token      String? @db.Text
+  id_token           String? @db.Text
+  token_type         String?
+  expires_at         Int?
+  
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expires      DateTime
+  
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  
+  @@index([userId])
+}
+
+// ============================================================================
+// USER PROFILES & CUSTOMIZATION
+// ============================================================================
+
+model Profile {
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Basic info
+  displayName       String?
+  bio               String?   @db.Text
+  avatar            String?   // Cloudflare R2 URL
+  banner            String?   // Cloudflare R2 URL
+  
+  // Profile details
+  location          String?
+  age               Int?
+  pronouns          String?
+  customStatus      String?
+  website           String?
+  
+  // Customization
+  theme             String    @default("glassmorphism") // cyberpunk, glassmorphism, minimal, neon, anime, hacker, luxury, gaming
+  backgroundColor   String    @default("#0f0f1e")
+  backgroundImage   String?   // Cloudflare R2 URL
+  backgroundType    String    @default("color") // color, image, gif, video, particles, gradient
+  backgroundVideo   String?
+  
+  // Animation & effects
+  enableGlow        Boolean   @default(true)
+  enableMouseTrail  Boolean   @default(false)
+  particleType      String?   // snow, rain, floating, none
+  animationSpeed    Int       @default(50) // 0-100
+  
+  // Text customization
+  fontFamily        String    @default("inter")
+  customFontUrl     String?
+  textColor         String?
+  
+  // Badges & status
+  badges            String[]  // JSON array of badge IDs
+  isVerified        Boolean   @default(false)
+  verificationBadge String?
+  
+  // Layout
+  layout            String    @default("classic") // classic, card, hero, split, gaming, hub, bento, portfolio, minimal, futuristic
+  
+  // Custom domain (premium)
+  customDomain      String?   @unique
+  customDomainVerified Boolean @default(false)
+  
+  // Analytics
+  totalViews        Int       @default(0)
+  totalUniqueVisitors Int     @default(0)
+  
+  // Timestamps
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  // Relations
+  widgets           Widget[]
+  analyticsEvents   AnalyticsEvent[]
+  customizations    Customization[]
+  
+  @@index([userId])
+}
+
+model Customization {
+  id            String   @id @default(cuid())
+  profileId     String
+  profile       Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  
+  // CSS customization (premium)
+  customCSS     String?  @db.Text
+  
+  // Color palette
+  primaryColor  String   @default("#7f77dd")
+  secondaryColor String  @default("#1d9e75")
+  accentColor   String   @default("#f2a623")
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  @@unique([profileId])
+  @@index([profileId])
+}
+
+// ============================================================================
+// WIDGETS & CONTENT
+// ============================================================================
+
+model Widget {
+  id              String   @id @default(cuid())
+  profileId       String
+  profile         Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  
+  // Widget type
+  type            String   // spotify, youtube, discord, steam, github, twitch, roblox, calendar, countdown, visitor, guestbook, weather, quote
+  
+  // Position & size
+  position        Int      @default(0) // Order on profile
+  width           Int      @default(1) // Grid width
+  height          Int      @default(1) // Grid height
+  x               Int      @default(0)
+  y               Int      @default(0)
+  
+  // Content
+  title           String?
+  description     String?  @db.Text
+  
+  // Widget-specific data (JSON)
+  data            Json?
+  
+  // External integrations
+  externalUrl     String?
+  externalId      String?  // Spotify track ID, YouTube video ID, etc.
+  externalToken   String?  // For API access (encrypted)
+  
+  // Customization
+  backgroundColor String?
+  borderColor     String?
+  textColor       String?
+  customCSS       String?  @db.Text
+  
+  // Visibility
+  isPublic        Boolean  @default(true)
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([profileId])
+  @@index([type])
+}
+
+// ============================================================================
+// SOCIAL FEATURES
+// ============================================================================
+
+model Follow {
+  id          String   @id @default(cuid())
+  followerId  String
+  follower    User     @relation("following", fields: [followerId], references: [id], onDelete: Cascade)
+  followingId String
+  following   User     @relation("followers", fields: [followingId], references: [id], onDelete: Cascade)
+  
+  createdAt   DateTime @default(now())
+  
+  @@unique([followerId, followingId])
+  @@index([followerId])
+  @@index([followingId])
+}
+
+model Like {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  profileId String
+  
+  createdAt DateTime @default(now())
+  
+  @@unique([userId, profileId])
+  @@index([userId])
+  @@index([profileId])
+}
+
+model Favorite {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  profileId String
+  
+  createdAt DateTime @default(now())
+  
+  @@unique([userId, profileId])
+  @@index([userId])
+}
+
+model Comment {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  profileId   String
+  content     String   @db.Text
+  
+  reactions   Reaction[]
+  replies     Comment[] @relation("replies")
+  replyTo     Comment?  @relation("replies", fields: [replyToId], references: [id], onDelete: SetNull)
+  replyToId   String?
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([userId])
+  @@index([profileId])
+}
+
+model Reaction {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  commentId String
+  comment   Comment  @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  emoji     String   // Emoji string
+  
+  createdAt DateTime @default(now())
+  
+  @@unique([userId, commentId, emoji])
+  @@index([userId])
+  @@index([commentId])
+}
+
+model Collection {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  name        String
+  description String?
+  
+  // Profiles in this collection
+  profiles    CollectionProfile[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([userId])
+}
+
+model CollectionProfile {
+  id           String   @id @default(cuid())
+  collectionId String
+  collection   Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  profileId    String
+  
+  addedAt      DateTime @default(now())
+  
+  @@unique([collectionId, profileId])
+}
+
+// ============================================================================
+// GUESTBOOK SYSTEM
+// ============================================================================
+
+model GuestbookEntry {
+  id           String   @id @default(cuid())
+  profileId    String
+  userId       String   // Profile owner
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  authorId     String?  // Who left the message (null if anonymous)
+  content      String   @db.Text
+  
+  gifUrl       String?  // Attached GIF
+  emojiReactions Json   @default("{}")
+  
+  isReported   Boolean  @default(false)
+  isSpam       Boolean  @default(false)
+  
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  
+  @@index([userId])
+  @@index([profileId])
+  @@index([authorId])
+}
+
+// ============================================================================
+// ANALYTICS
+// ============================================================================
+
+model AnalyticsEvent {
+  id           String   @id @default(cuid())
+  profileId    String
+  profile      Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  
+  eventType    String   // page_view, social_click, widget_interaction
+  
+  // Visitor info
+  visitorId    String   // Anonymous or user ID
+  ipAddress    String?
+  userAgent    String?
+  
+  // Referrer
+  referrer     String?
+  
+  // Device info
+  deviceType   String?  // mobile, tablet, desktop
+  country      String?
+  city         String?
+  
+  // Social link click
+  socialLink   String?
+  
+  createdAt    DateTime @default(now())
+  
+  @@index([profileId])
+  @@index([visitorId])
+  @@index([createdAt])
+}
+
+model HeatmapEvent {
+  id        String   @id @default(cuid())
+  profileId String
+  
+  x         Float    // Click position X
+  y         Float    // Click position Y
+  
+  createdAt DateTime @default(now())
+  
+  @@index([profileId])
+}
+
+// ============================================================================
+// PREMIUM SUBSCRIPTIONS
+// ============================================================================
+
+model Subscription {
+  id            String   @id @default(cuid())
+  userId        String   @unique
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  tier          String   @default("free") // free, pro, enterprise
+  status        String   @default("active") // active, cancelled, expired
+  
+  // Stripe
+  stripeCustomerId String?
+  stripeSubscriptionId String?
+  
+  // Billing
+  currentPeriodStart DateTime?
+  currentPeriodEnd   DateTime?
+  cancelledAt        DateTime?
+  
+  // Features access
+  customDomain  Boolean @default(false)
+  advancedAnalytics Boolean @default(false)
+  premiumThemes Boolean @default(false)
+  customCSS     Boolean @default(false)
+  unlimitedWidgets Boolean @default(false)
+  aiFeatures    Boolean @default(false)
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  @@index([userId])
+}
+
+// ============================================================================
+// REPORTING & MODERATION
+// ============================================================================
+
+model Report {
+  id              String   @id @default(cuid())
+  reportedById    String
+  reportedBy      User     @relation("reportedBy", fields: [reportedById], references: [id], onDelete: Cascade)
+  
+  profileId       String
+  reportedProfile User     @relation("reportedProfile", fields: [profileId], references: [id], onDelete: Cascade)
+  
+  reason          String   // spam, offensive, nsfw, harassment, impersonation, other
+  description     String?  @db.Text
+  
+  status          String   @default("pending") // pending, reviewed, resolved, dismissed
+  reviewedAt      DateTime?
+  reviewedById    String?
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([reportedById])
+  @@index([profileId])
+  @@index([status])
+}
+
+// ============================================================================
+// TRENDING & FEATURED
+// ============================================================================
+
+model FeaturedProfile {
+  id        String   @id @default(cuid())
+  profileId String
+  
+  reason    String?
+  position  Int      // Display order
+  
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  
+  @@unique([profileId])
+}
+
+model Leaderboard {
+  id        String   @id @default(cuid())
+  profileId String
+  
+  category  String   // views, followers, engagement
+  rank      Int
+  score     Int
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@unique([profileId, category])
+  @@index([category, rank])
+}
+
+// ============================================================================
+// ACHIEVEMENTS & STREAKS
+// ============================================================================
+
+model Achievement {
+  id           String   @id @default(cuid())
+  userId       String
+  
+  type         String   // first_profile, 100_views, 10_followers, etc.
+  unlockedAt   DateTime @default(now())
+  
+  @@unique([userId, type])
+}
+
+model DailyStreak {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  
+  currentStreak Int   @default(0)
+  longestStreak Int   @default(0)
+  lastVisit   DateTime @default(now())
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
