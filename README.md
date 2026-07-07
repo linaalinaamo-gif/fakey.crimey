@@ -18,10 +18,6 @@ A simple bio link website that lets you share your online presence from one clea
 git clone https://github.com/linaalinaamo-gif/fakey.crimey.git
 ```
 
-2. Open the project folder.
-
-3. Launch `index.html` in your browser or serve it with your preferred web server.
-
 ## Customization
 
 Update the HTML, CSS, and assets to personalize:
@@ -34,7 +30,7 @@ Update the HTML, CSS, and assets to personalize:
 
 ## Technologies
 
-* HTML5
+* TypeScript
 * CSS3
 * JavaScript
 
